@@ -1,6 +1,6 @@
 #include <TM1637Display.h>
 
-// ==== Fencer 1 Pin Definition ====
+// ==== Fencer 1 Pin Definitions ====
 const int A1_PIN = 22;
 const int B1_PIN = 24;
 const int C1_PIN = 26;
