@@ -42,6 +42,15 @@ bool outputActive = false;
 unsigned long outputStartTime = 0;
 bool buzzerAlreadyTriggered = false;
 
+// Touch state tracking
+bool fencer1NotificationSent = false;
+bool fencer2NotificationSent = false;
+bool doubleNotificationSent = false;
+
+// Score tracking for status messages
+int fencer1Score = 0;
+int fencer2Score = 0;
+
 void setup() {
   Serial.begin(115200);      // Serial Monitor for debugging
   Serial1.begin(115200);   // UART for ESP32 communication
@@ -110,17 +119,84 @@ while (Serial1.available()) {
 
   handleFencingLogic();
   
-  // ===== Heartbeat to ESP32 =====
-  Serial1.println("Mega Detected");
+   // Example: Read incoming message from Serial1 (connected to ESP32)
+if (Serial1.available()) {
+    String incomingMessage = Serial1.readStringUntil('\n');
+    incomingMessage.trim();              // Remove whitespace/newlines
+    incomingMessage.toLowerCase();       // Convert to lowercase
+    incomingMessage.trim();  // Remove any whitespace or newline characters
 
-  // Listen for responses from ESP32
-  if (Serial1.available()) {
-    String espResponse = Serial1.readString();
-    Serial.print("Response from ESP32: ");
-    Serial.println(espResponse);
-  }
+    if (incomingMessage == "start") {
+        timerRunning = true;
+        Serial.println("Timer Started");
+        Serial1.println("ACK: <start timer>");
+    } 
+    else if (incomingMessage == "stop") {
+        timerRunning = false;
+        Serial.println("Timer Stopped");
+        Serial1.println("ACK: <stop timer>");
+    } 
+    else if (incomingMessage.startsWith("reset:")) {
+        timerRunning = false;             // Stop the timer on reset
+        
+        // Extract the time value after "reset:" (in milliseconds)
+        String timeStr = incomingMessage.substring(6);
+        long newTimeMs = timeStr.toInt();
+        
+        // Validate time (must be between 1000ms and 3600000ms / 1 sec to 60 minutes)
+        if (newTimeMs >= 1000 && newTimeMs <= 3600000) {
+            remainingSeconds = newTimeMs / 1000;  // Convert to seconds
+            int minutes = remainingSeconds / 60;
+            int seconds = remainingSeconds % 60;
+            Serial.print("Timer Reset to ");
+            Serial.print(minutes);
+            Serial.print(":");
+            if (seconds < 10) Serial.print("0");
+            Serial.print(seconds);
+            Serial.print(" (");
+            Serial.print(newTimeMs);
+            Serial.println("ms)");
+            Serial1.print("ACK: <reset timer to ");
+            Serial1.print(newTimeMs);
+            Serial1.println("ms>");
+        } else {
+            // Invalid time value
+            Serial.print("Invalid time value: ");
+            Serial.print(newTimeMs);
+            Serial.println("ms. Must be between 1000-3600000ms");
+            Serial1.println("ERROR: <reset timer> (invalid time)");
+        }
+        
+        updateDisplay();                  // Update the display
+    } 
+    else if (incomingMessage == "status") {
+        // Send current state to app
+        Serial.println("Sending status...");
+        Serial.print("Current remainingSeconds: ");
+        Serial.println(remainingSeconds);
+        Serial.print("Timer running: ");
+        Serial.println(timerRunning ? "YES" : "NO");
+        
+        // Send timer status
+        long currentTimeMs = (long)remainingSeconds * 1000;
+        String timerStatus = "STATUS:TIMER:" + String(currentTimeMs) + ":" + (timerRunning ? "RUNNING" : "STOPPED");
+        Serial1.println(timerStatus);
+        Serial.println("Sent: " + timerStatus);
+        
+        // Send score status
+        String scoreStatus = "STATUS:SCORE:" + String(fencer1Score) + ":" + String(fencer2Score);
+        Serial1.println(scoreStatus);
+        Serial.println("Sent: " + scoreStatus);
+        
+        Serial1.println("ACK: <status>");
+    }
+    else {
+        // Optional: Print unrecognized commands
+        Serial.print("Unrecognized Command: ");
+        Serial.println(incomingMessage);
+    }
+}
 
-  delay(1000);  // Wait 1 second
 }
 
 
@@ -162,6 +238,11 @@ void triggerEndBuzzer() {
 }
 
 void handleFencingLogic() {
+  // Skip touch detection during active LED/buzzer period
+  if (outputActive) {
+    return;
+  }
+  
   int a1 = digitalRead(A1_PIN);
   int c2 = digitalRead(C2_PIN);
   int a2 = digitalRead(A2_PIN);
@@ -170,7 +251,23 @@ void handleFencingLogic() {
   bool fencer1Hit = (a1 == LOW && c2 == HIGH);
   bool fencer2Hit = (a2 == LOW && c1 == HIGH);
 
-  if (fencer1Hit || fencer2Hit) {
+  // Check for new touches
+  bool needsProcessing = false;
+  
+  if (fencer1Hit && fencer2Hit) {
+    // Double touch - check if already notified
+    if (!doubleNotificationSent) {
+      needsProcessing = true;
+    }
+  } else if (fencer1Hit && !fencer1NotificationSent) {
+    // Fencer 1 single touch - check if already notified
+    needsProcessing = true;
+  } else if (fencer2Hit && !fencer2NotificationSent) {
+    // Fencer 2 single touch - check if already notified
+    needsProcessing = true;
+  }
+
+  if (needsProcessing) {
     bool fencer1Scores = false;
     bool fencer2Scores = false;
 
@@ -204,6 +301,22 @@ void handleFencingLogic() {
       }
     }
 
+    // Send scoring messages to ESP32 - only once per touch
+    if (fencer1Scores && fencer2Scores) {
+      Serial1.println("SCORE:DOUBLE");
+      doubleNotificationSent = true;
+      fencer1Score++;
+      fencer2Score++;
+    } else if (fencer1Scores) {
+      Serial1.println("SCORE:FENCER1");
+      fencer1NotificationSent = true;
+      fencer1Score++;
+    } else if (fencer2Scores) {
+      Serial1.println("SCORE:FENCER2");
+      fencer2NotificationSent = true;
+      fencer2Score++;
+    }
+
     if (fencer1Scores) digitalWrite(LED1_PIN, HIGH);
     if (fencer2Scores) digitalWrite(LED2_PIN, HIGH);
     if (fencer1Scores || fencer2Scores) digitalWrite(BUZZER_PIN, HIGH);
@@ -211,5 +324,16 @@ void handleFencingLogic() {
     outputActive = true;
     outputStartTime = millis();
     timerRunning = false;
+  }
+  
+  // Reset notification flags when touches are released
+  if (!fencer1Hit) {
+    fencer1NotificationSent = false;
+  }
+  if (!fencer2Hit) {
+    fencer2NotificationSent = false;
+  }
+  if (!fencer1Hit || !fencer2Hit) {
+    doubleNotificationSent = false;
   }
 }
