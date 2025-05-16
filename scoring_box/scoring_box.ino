@@ -104,6 +104,12 @@ while (Serial1.available()) {
       previousMillis = currentMillis;
       updateDisplay();
       remainingSeconds--;
+      
+      // Send timer status update to ESP32
+      long currentTimeMs = (long)remainingSeconds * 1000;
+      String timerStatus = "STATUS:TIMER:" + String(currentTimeMs) + ":RUNNING";
+      Serial1.println(timerStatus);
+      
       if (remainingSeconds == 0 && !buzzerAlreadyTriggered) {
         triggerEndBuzzer();
       }
@@ -130,11 +136,21 @@ if (Serial1.available()) {
         timerRunning = true;
         Serial.println("Timer Started");
         Serial1.println("ACK: <start timer>");
+        
+        // Send timer status
+        long currentTimeMs = (long)remainingSeconds * 1000;
+        String timerStatus = "STATUS:TIMER:" + String(currentTimeMs) + ":RUNNING";
+        Serial1.println(timerStatus);
     } 
     else if (incomingMessage == "stop") {
         timerRunning = false;
         Serial.println("Timer Stopped");
         Serial1.println("ACK: <stop timer>");
+        
+        // Send timer status
+        long currentTimeMs = (long)remainingSeconds * 1000;
+        String timerStatus = "STATUS:TIMER:" + String(currentTimeMs) + ":STOPPED";
+        Serial1.println(timerStatus);
     } 
     else if (incomingMessage.startsWith("reset:")) {
         timerRunning = false;             // Stop the timer on reset
@@ -211,9 +227,19 @@ void handleButton() {
       buzzerAlreadyTriggered = false;
       updateDisplay();
       pressCount = 0;
+      
+      // Send timer status after reset
+      long currentTimeMs = (long)remainingSeconds * 1000;
+      String timerStatus = "STATUS:TIMER:" + String(currentTimeMs) + ":STOPPED";
+      Serial1.println(timerStatus);
     } else {
       timerRunning = !timerRunning;
       pressCount = 1;
+      
+      // Send timer status after toggle
+      long currentTimeMs = (long)remainingSeconds * 1000;
+      String timerStatus = "STATUS:TIMER:" + String(currentTimeMs) + ":" + (timerRunning ? "RUNNING" : "STOPPED");
+      Serial1.println(timerStatus);
     }
     lastButtonPress = now;
     while (digitalRead(BUTTON_PIN) == LOW);
