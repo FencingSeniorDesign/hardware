@@ -10,6 +10,24 @@
 BLEServer* pServer = nullptr;
 BLECharacteristic* controlCharacteristic = nullptr;
 BLECharacteristic* statusCharacteristic = nullptr;
+bool deviceConnected = false;
+
+// ==== BLE Server Callbacks ====
+class MyServerCallbacks : public BLEServerCallbacks {
+  void onConnect(BLEServer* pServer) {
+    Serial.println("Client Connected");
+    deviceConnected = true;
+  }
+
+  void onDisconnect(BLEServer* pServer) {
+    Serial.println("Client Disconnected");
+    deviceConnected = false;
+    // Restart advertising immediately when disconnected
+    delay(500); // Give the BLE stack time to clean up
+    pServer->startAdvertising();
+    Serial.println("Restarted advertising");
+  }
+};
 
 // ==== BLE Write Callback Class ====
 class ControlCharacteristicCallbacks : public BLECharacteristicCallbacks {
@@ -36,6 +54,7 @@ void setup() {
 
   // Create BLE Server
   pServer = BLEDevice::createServer();
+  pServer->setCallbacks(new MyServerCallbacks());
 
   // Create BLE Service
   BLEService* pService = pServer->createService(SERVICE_UUID);
@@ -58,7 +77,7 @@ void setup() {
   Serial.println(">>> BLE Server started. Waiting for connections... <<<");
 }
 
-void loop() {
+void loop() {  
   // Listen for messages from Mega
   if (Serial2.available()) {
     String megaMessage = Serial2.readStringUntil('\n');
@@ -69,7 +88,7 @@ void loop() {
     
     // Check if this is a scoring message and forward it via BLE
     if (megaMessage.startsWith("SCORE:")) {
-      if (pServer->getConnectedCount() > 0 && controlCharacteristic != nullptr) {
+      if (deviceConnected && controlCharacteristic != nullptr) {
         controlCharacteristic->setValue(megaMessage.c_str());
         controlCharacteristic->notify();
         Serial.print("BLE Notification sent: ");
@@ -78,7 +97,7 @@ void loop() {
     }
     // Forward ACK messages as well
     else if (megaMessage.startsWith("ACK:")) {
-      if (pServer->getConnectedCount() > 0 && controlCharacteristic != nullptr) {
+      if (deviceConnected && controlCharacteristic != nullptr) {
         controlCharacteristic->setValue(megaMessage.c_str());
         controlCharacteristic->notify();
         Serial.print("BLE ACK forwarded: ");
