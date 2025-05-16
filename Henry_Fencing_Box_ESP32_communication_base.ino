@@ -127,12 +127,38 @@ if (Serial1.available()) {
         Serial.println("Timer Stopped");
         Serial1.println("ACK: <stop timer>");
     } 
-    else if (incomingMessage == "reset") {
-        timerRunning = false;             // Optional: stop the timer on reset
-        remainingSeconds = 180;           // Reset to 3 minutes
-        updateDisplay();                  // Update the display if you have one
-        Serial.println("Timer Reset to 3:00");
-        Serial1.println("ACK: <reset timer>");
+    else if (incomingMessage.startsWith("reset:")) {
+        timerRunning = false;             // Stop the timer on reset
+        
+        // Extract the time value after "reset:" (in milliseconds)
+        String timeStr = incomingMessage.substring(6);
+        long newTimeMs = timeStr.toInt();
+        
+        // Validate time (must be between 1000ms and 3600000ms / 1 sec to 60 minutes)
+        if (newTimeMs >= 1000 && newTimeMs <= 3600000) {
+            remainingSeconds = newTimeMs / 1000;  // Convert to seconds
+            int minutes = remainingSeconds / 60;
+            int seconds = remainingSeconds % 60;
+            Serial.print("Timer Reset to ");
+            Serial.print(minutes);
+            Serial.print(":");
+            if (seconds < 10) Serial.print("0");
+            Serial.print(seconds);
+            Serial.print(" (");
+            Serial.print(newTimeMs);
+            Serial.println("ms)");
+            Serial1.print("ACK: <reset timer to ");
+            Serial1.print(newTimeMs);
+            Serial1.println("ms>");
+        } else {
+            // Invalid time value
+            Serial.print("Invalid time value: ");
+            Serial.print(newTimeMs);
+            Serial.println("ms. Must be between 1000-3600000ms");
+            Serial1.println("ERROR: <reset timer> (invalid time)");
+        }
+        
+        updateDisplay();                  // Update the display
     } 
     else {
         // Optional: Print unrecognized commands
