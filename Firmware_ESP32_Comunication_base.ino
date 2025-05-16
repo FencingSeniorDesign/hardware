@@ -1,6 +1,7 @@
 #include <BLEDevice.h>
 #include <BLEUtils.h>
 #include <BLEServer.h>
+#include <BLE2902.h>
 
 // ==== UUID Definitions ====
 #define SERVICE_UUID "12345678-1234-5678-1234-56789abcdef0"
@@ -65,6 +66,9 @@ void setup() {
     BLECharacteristic::PROPERTY_WRITE |
     BLECharacteristic::PROPERTY_NOTIFY
   );
+  
+  // Add the Client Characteristic Configuration Descriptor (CCCD) for notifications
+  controlCharacteristic->addDescriptor(new BLE2902());
 
   // Set the callback for the characteristic
   controlCharacteristic->setCallbacks(new ControlCharacteristicCallbacks());
