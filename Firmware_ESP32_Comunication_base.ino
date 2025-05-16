@@ -59,25 +59,32 @@ void setup() {
 }
 
 void loop() {
-  // Send ESP heartbeat message every second
-//  Serial2.println("ESP Heartbeat Message");
-//  Serial.println("ESP Sent: Heartbeat Message");
-
-  // Listen for response from Mega
-//  if (Serial2.available()) {
-//    String incoming = Serial2.readStringUntil('\n');
-//    Serial.print("Received from Mega: ");
-//    Serial.println(incoming);
-//  }
-
-//  delay(1000);  // Wait 1 second before repeating
-  // Listen for BLE control commands (already implemented in your callbacks)
-
-  // Listen for responses from Mega (ACKs)
+  // Listen for messages from Mega
   if (Serial2.available()) {
-    String ackMessage = Serial2.readStringUntil('\n');
-    Serial.print("Received ACK from Mega: ");
-    Serial.println(ackMessage);
+    String megaMessage = Serial2.readStringUntil('\n');
+    megaMessage.trim();
+    
+    Serial.print("Received from Mega: ");
+    Serial.println(megaMessage);
+    
+    // Check if this is a scoring message and forward it via BLE
+    if (megaMessage.startsWith("SCORE:")) {
+      if (pServer->getConnectedCount() > 0 && controlCharacteristic != nullptr) {
+        controlCharacteristic->setValue(megaMessage.c_str());
+        controlCharacteristic->notify();
+        Serial.print("BLE Notification sent: ");
+        Serial.println(megaMessage);
+      }
+    }
+    // Forward ACK messages as well
+    else if (megaMessage.startsWith("ACK:")) {
+      if (pServer->getConnectedCount() > 0 && controlCharacteristic != nullptr) {
+        controlCharacteristic->setValue(megaMessage.c_str());
+        controlCharacteristic->notify();
+        Serial.print("BLE ACK forwarded: ");
+        Serial.println(megaMessage);
+      }
+    }
   }
 
   // Optional: small delay to reduce CPU usage

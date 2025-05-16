@@ -224,6 +224,15 @@ void handleFencingLogic() {
       }
     }
 
+    // Send scoring messages to ESP32
+    if (fencer1Scores && fencer2Scores) {
+      Serial1.println("SCORE:DOUBLE");
+    } else if (fencer1Scores) {
+      Serial1.println("SCORE:FENCER1");
+    } else if (fencer2Scores) {
+      Serial1.println("SCORE:FENCER2");
+    }
+
     if (fencer1Scores) digitalWrite(LED1_PIN, HIGH);
     if (fencer2Scores) digitalWrite(LED2_PIN, HIGH);
     if (fencer1Scores || fencer2Scores) digitalWrite(BUZZER_PIN, HIGH);
