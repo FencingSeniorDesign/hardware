@@ -102,13 +102,15 @@ while (Serial1.available()) {
     unsigned long currentMillis = millis();
     if (currentMillis - previousMillis >= interval) {
       previousMillis = currentMillis;
-      updateDisplay();
-      remainingSeconds--;
       
-      // Send timer status update to ESP32
+      // Send timer status update BEFORE decrementing
       long currentTimeMs = (long)remainingSeconds * 1000;
       String timerStatus = "STATUS:TIMER:" + String(currentTimeMs) + ":RUNNING";
       Serial1.println(timerStatus);
+      
+      // Update display and decrement AFTER sending status
+      updateDisplay();
+      remainingSeconds--;
       
       if (remainingSeconds == 0 && !buzzerAlreadyTriggered) {
         triggerEndBuzzer();
