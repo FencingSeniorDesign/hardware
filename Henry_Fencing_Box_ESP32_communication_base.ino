@@ -42,6 +42,11 @@ bool outputActive = false;
 unsigned long outputStartTime = 0;
 bool buzzerAlreadyTriggered = false;
 
+// Touch state tracking
+bool fencer1NotificationSent = false;
+bool fencer2NotificationSent = false;
+bool doubleNotificationSent = false;
+
 void setup() {
   Serial.begin(115200);      // Serial Monitor for debugging
   Serial1.begin(115200);   // UART for ESP32 communication
@@ -208,6 +213,11 @@ void triggerEndBuzzer() {
 }
 
 void handleFencingLogic() {
+  // Skip touch detection during active LED/buzzer period
+  if (outputActive) {
+    return;
+  }
+  
   int a1 = digitalRead(A1_PIN);
   int c2 = digitalRead(C2_PIN);
   int a2 = digitalRead(A2_PIN);
@@ -216,7 +226,23 @@ void handleFencingLogic() {
   bool fencer1Hit = (a1 == LOW && c2 == HIGH);
   bool fencer2Hit = (a2 == LOW && c1 == HIGH);
 
-  if (fencer1Hit || fencer2Hit) {
+  // Check for new touches
+  bool needsProcessing = false;
+  
+  if (fencer1Hit && fencer2Hit) {
+    // Double touch - check if already notified
+    if (!doubleNotificationSent) {
+      needsProcessing = true;
+    }
+  } else if (fencer1Hit && !fencer1NotificationSent) {
+    // Fencer 1 single touch - check if already notified
+    needsProcessing = true;
+  } else if (fencer2Hit && !fencer2NotificationSent) {
+    // Fencer 2 single touch - check if already notified
+    needsProcessing = true;
+  }
+
+  if (needsProcessing) {
     bool fencer1Scores = false;
     bool fencer2Scores = false;
 
@@ -250,13 +276,16 @@ void handleFencingLogic() {
       }
     }
 
-    // Send scoring messages to ESP32
+    // Send scoring messages to ESP32 - only once per touch
     if (fencer1Scores && fencer2Scores) {
       Serial1.println("SCORE:DOUBLE");
+      doubleNotificationSent = true;
     } else if (fencer1Scores) {
       Serial1.println("SCORE:FENCER1");
+      fencer1NotificationSent = true;
     } else if (fencer2Scores) {
       Serial1.println("SCORE:FENCER2");
+      fencer2NotificationSent = true;
     }
 
     if (fencer1Scores) digitalWrite(LED1_PIN, HIGH);
@@ -266,5 +295,16 @@ void handleFencingLogic() {
     outputActive = true;
     outputStartTime = millis();
     timerRunning = false;
+  }
+  
+  // Reset notification flags when touches are released
+  if (!fencer1Hit) {
+    fencer1NotificationSent = false;
+  }
+  if (!fencer2Hit) {
+    fencer2NotificationSent = false;
+  }
+  if (!fencer1Hit || !fencer2Hit) {
+    doubleNotificationSent = false;
   }
 }
