@@ -103,14 +103,16 @@ while (Serial1.available()) {
     if (currentMillis - previousMillis >= interval) {
       previousMillis = currentMillis;
       
-      // Send timer status update BEFORE decrementing
+      // Send timer status with the current value before decrementing
       long currentTimeMs = (long)remainingSeconds * 1000;
       String timerStatus = "STATUS:TIMER:" + String(currentTimeMs) + ":RUNNING";
       Serial1.println(timerStatus);
       
-      // Update display and decrement AFTER sending status
-      updateDisplay();
+      // Decrement for the next cycle
       remainingSeconds--;
+      
+      // Update display to show the new value
+      updateDisplay();
       
       if (remainingSeconds == 0 && !buzzerAlreadyTriggered) {
         triggerEndBuzzer();
