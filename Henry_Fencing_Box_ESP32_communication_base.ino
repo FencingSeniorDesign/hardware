@@ -47,6 +47,10 @@ bool fencer1NotificationSent = false;
 bool fencer2NotificationSent = false;
 bool doubleNotificationSent = false;
 
+// Score tracking for status messages
+int fencer1Score = 0;
+int fencer2Score = 0;
+
 void setup() {
   Serial.begin(115200);      // Serial Monitor for debugging
   Serial1.begin(115200);   // UART for ESP32 communication
@@ -165,6 +169,27 @@ if (Serial1.available()) {
         
         updateDisplay();                  // Update the display
     } 
+    else if (incomingMessage == "status") {
+        // Send current state to app
+        Serial.println("Sending status...");
+        Serial.print("Current remainingSeconds: ");
+        Serial.println(remainingSeconds);
+        Serial.print("Timer running: ");
+        Serial.println(timerRunning ? "YES" : "NO");
+        
+        // Send timer status
+        long currentTimeMs = (long)remainingSeconds * 1000;
+        String timerStatus = "STATUS:TIMER:" + String(currentTimeMs) + ":" + (timerRunning ? "RUNNING" : "STOPPED");
+        Serial1.println(timerStatus);
+        Serial.println("Sent: " + timerStatus);
+        
+        // Send score status
+        String scoreStatus = "STATUS:SCORE:" + String(fencer1Score) + ":" + String(fencer2Score);
+        Serial1.println(scoreStatus);
+        Serial.println("Sent: " + scoreStatus);
+        
+        Serial1.println("ACK: <status>");
+    }
     else {
         // Optional: Print unrecognized commands
         Serial.print("Unrecognized Command: ");
@@ -280,12 +305,16 @@ void handleFencingLogic() {
     if (fencer1Scores && fencer2Scores) {
       Serial1.println("SCORE:DOUBLE");
       doubleNotificationSent = true;
+      fencer1Score++;
+      fencer2Score++;
     } else if (fencer1Scores) {
       Serial1.println("SCORE:FENCER1");
       fencer1NotificationSent = true;
+      fencer1Score++;
     } else if (fencer2Scores) {
       Serial1.println("SCORE:FENCER2");
       fencer2NotificationSent = true;
+      fencer2Score++;
     }
 
     if (fencer1Scores) digitalWrite(LED1_PIN, HIGH);

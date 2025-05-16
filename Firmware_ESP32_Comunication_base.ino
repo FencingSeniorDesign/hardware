@@ -108,6 +108,15 @@ void loop() {
         Serial.println(megaMessage);
       }
     }
+    // Forward STATUS messages
+    else if (megaMessage.startsWith("STATUS:")) {
+      if (deviceConnected && controlCharacteristic != nullptr) {
+        controlCharacteristic->setValue(megaMessage.c_str());
+        controlCharacteristic->notify();
+        Serial.print("BLE STATUS forwarded: ");
+        Serial.println(megaMessage);
+      }
+    }
   }
 
   // Optional: small delay to reduce CPU usage
