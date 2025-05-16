@@ -102,10 +102,14 @@ while (Serial1.available()) {
     unsigned long currentMillis = millis();
     if (currentMillis - previousMillis >= interval) {
       previousMillis = currentMillis;
-      updateDisplay();
+      
+      // Decrement first
       remainingSeconds--;
       
-      // Send timer status update to ESP32
+      // Update display to show the new value
+      updateDisplay();
+      
+      // Send timer status with the decremented value
       long currentTimeMs = (long)remainingSeconds * 1000;
       String timerStatus = "STATUS:TIMER:" + String(currentTimeMs) + ":RUNNING";
       Serial1.println(timerStatus);
@@ -137,7 +141,7 @@ if (Serial1.available()) {
         Serial.println("Timer Started");
         Serial1.println("ACK: <start timer>");
         
-        // Send timer status
+        // Send the current timer value when starting
         long currentTimeMs = (long)remainingSeconds * 1000;
         String timerStatus = "STATUS:TIMER:" + String(currentTimeMs) + ":RUNNING";
         Serial1.println(timerStatus);
