@@ -37,6 +37,10 @@ unsigned long previousMillis = 0;
 const long interval = 1000;
 int remainingSeconds = 180;
 
+// Passivity (non-combativity) timer
+int passivitySeconds = 60;
+bool passivityTimerRunning = false;
+
 // Output hold management
 bool outputActive = false;
 unsigned long outputStartTime = 0;
@@ -106,6 +110,11 @@ while (Serial1.available()) {
       // Decrement first
       remainingSeconds--;
       
+      // Update passivity timer if running
+      if (passivityTimerRunning && passivitySeconds > 0) {
+        passivitySeconds--;
+      }
+      
       // Update display to show the new value
       updateDisplay();
       
@@ -113,6 +122,11 @@ while (Serial1.available()) {
       long currentTimeMs = (long)remainingSeconds * 1000;
       String timerStatus = "STATUS:TIMER:" + String(currentTimeMs) + ":RUNNING";
       Serial1.println(timerStatus);
+      
+      // Send passivity timer status
+      long passivityTimeMs = (long)passivitySeconds * 1000;
+      String passivityStatus = "STATUS:PASSIVITY:" + String(passivityTimeMs) + ":" + (passivityTimerRunning ? "RUNNING" : "STOPPED");
+      Serial1.println(passivityStatus);
       
       if (remainingSeconds == 0 && !buzzerAlreadyTriggered) {
         triggerEndBuzzer();
@@ -138,6 +152,7 @@ if (Serial1.available()) {
 
     if (incomingMessage == "start") {
         timerRunning = true;
+        passivityTimerRunning = true;  // Start passivity timer with main timer
         Serial.println("Timer Started");
         Serial1.println("ACK: <start timer>");
         
@@ -145,9 +160,15 @@ if (Serial1.available()) {
         long currentTimeMs = (long)remainingSeconds * 1000;
         String timerStatus = "STATUS:TIMER:" + String(currentTimeMs) + ":RUNNING";
         Serial1.println(timerStatus);
+        
+        // Send passivity timer status
+        long passivityTimeMs = (long)passivitySeconds * 1000;
+        String passivityStatus = "STATUS:PASSIVITY:" + String(passivityTimeMs) + ":RUNNING";
+        Serial1.println(passivityStatus);
     } 
     else if (incomingMessage == "stop") {
         timerRunning = false;
+        passivityTimerRunning = false;  // Stop passivity timer with main timer
         Serial.println("Timer Stopped");
         Serial1.println("ACK: <stop timer>");
         
@@ -155,6 +176,11 @@ if (Serial1.available()) {
         long currentTimeMs = (long)remainingSeconds * 1000;
         String timerStatus = "STATUS:TIMER:" + String(currentTimeMs) + ":STOPPED";
         Serial1.println(timerStatus);
+        
+        // Send passivity timer status
+        long passivityTimeMs = (long)passivitySeconds * 1000;
+        String passivityStatus = "STATUS:PASSIVITY:" + String(passivityTimeMs) + ":STOPPED";
+        Serial1.println(passivityStatus);
     } 
     else if (incomingMessage.startsWith("reset:")) {
         timerRunning = false;             // Stop the timer on reset
@@ -203,6 +229,12 @@ if (Serial1.available()) {
         Serial1.println(timerStatus);
         Serial.println("Sent: " + timerStatus);
         
+        // Send passivity timer status
+        long passivityTimeMs = (long)passivitySeconds * 1000;
+        String passivityStatus = "STATUS:PASSIVITY:" + String(passivityTimeMs) + ":" + (passivityTimerRunning ? "RUNNING" : "STOPPED");
+        Serial1.println(passivityStatus);
+        Serial.println("Sent: " + passivityStatus);
+        
         // Send score status
         String scoreStatus = "STATUS:SCORE:" + String(fencer1Score) + ":" + String(fencer2Score);
         Serial1.println(scoreStatus);
@@ -228,6 +260,8 @@ void handleButton() {
     if (now - lastButtonPress < 500) {
       remainingSeconds = 180;
       timerRunning = false;
+      passivitySeconds = 60;  // Reset passivity timer
+      passivityTimerRunning = false;
       buzzerAlreadyTriggered = false;
       updateDisplay();
       pressCount = 0;
@@ -236,14 +270,25 @@ void handleButton() {
       long currentTimeMs = (long)remainingSeconds * 1000;
       String timerStatus = "STATUS:TIMER:" + String(currentTimeMs) + ":STOPPED";
       Serial1.println(timerStatus);
+      
+      // Send passivity timer status
+      long passivityTimeMs = (long)passivitySeconds * 1000;
+      String passivityStatus = "STATUS:PASSIVITY:" + String(passivityTimeMs) + ":STOPPED";
+      Serial1.println(passivityStatus);
     } else {
       timerRunning = !timerRunning;
+      passivityTimerRunning = timerRunning;  // Toggle passivity timer with main timer
       pressCount = 1;
       
       // Send timer status after toggle
       long currentTimeMs = (long)remainingSeconds * 1000;
       String timerStatus = "STATUS:TIMER:" + String(currentTimeMs) + ":" + (timerRunning ? "RUNNING" : "STOPPED");
       Serial1.println(timerStatus);
+      
+      // Send passivity timer status  
+      long passivityTimeMs = (long)passivitySeconds * 1000;
+      String passivityStatus = "STATUS:PASSIVITY:" + String(passivityTimeMs) + ":" + (passivityTimerRunning ? "RUNNING" : "STOPPED");
+      Serial1.println(passivityStatus);
     }
     lastButtonPress = now;
     while (digitalRead(BUTTON_PIN) == LOW);
@@ -354,6 +399,10 @@ void handleFencingLogic() {
     outputActive = true;
     outputStartTime = millis();
     timerRunning = false;
+    
+    // Reset and stop passivity timer on score
+    passivitySeconds = 60;
+    passivityTimerRunning = false;
   }
   
   // Reset notification flags when touches are released
