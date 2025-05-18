@@ -376,20 +376,28 @@ void handleFencingLogic() {
       }
     }
 
-    // Send scoring messages to ESP32 - only once per touch
+    // Always set notification flags to prevent duplicate processing
     if (fencer1Scores && fencer2Scores) {
-      Serial1.println("SCORE:DOUBLE");
       doubleNotificationSent = true;
-      fencer1Score++;
-      fencer2Score++;
     } else if (fencer1Scores) {
-      Serial1.println("SCORE:FENCER1");
       fencer1NotificationSent = true;
-      fencer1Score++;
     } else if (fencer2Scores) {
-      Serial1.println("SCORE:FENCER2");
       fencer2NotificationSent = true;
-      fencer2Score++;
+    }
+
+    // Only send scores to app and increment score counter if timer is running
+    if (timerRunning) {
+      if (fencer1Scores && fencer2Scores) {
+        Serial1.println("SCORE:DOUBLE");
+        fencer1Score++;
+        fencer2Score++;
+      } else if (fencer1Scores) {
+        Serial1.println("SCORE:FENCER1");
+        fencer1Score++;
+      } else if (fencer2Scores) {
+        Serial1.println("SCORE:FENCER2");
+        fencer2Score++;
+      }
     }
 
     if (fencer1Scores) digitalWrite(LED1_PIN, HIGH);
