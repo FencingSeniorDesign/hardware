@@ -20,6 +20,14 @@ const int BUZZER_PIN = 34;
 #define DIO 5
 TM1637Display display(CLK, DIO);
 
+// ==== Fencer Score Display Pins ====
+#define CLK1 6  // Fencer 1 Display Clock
+#define DIO1 7  // Fencer 1 Display Data
+#define CLK2 8  // Fencer 2 Display Clock
+#define DIO2 9  // Fencer 2 Display Data
+TM1637Display display1(CLK1, DIO1);
+TM1637Display display2(CLK2, DIO2);
+
 // ==== Timing Config ====
 const int TOUCH_DELAY = 2000;
 const int DOUBLE_TOUCH_WINDOW = 40;
@@ -51,15 +59,7 @@ bool fencer1NotificationSent = false;
 bool fencer2NotificationSent = false;
 bool doubleNotificationSent = false;
 
-// Example TM1637 Pin Definitions (Adjust as Needed)
-#define CLK1 6  // Fencer 1 Display Clock
-#define DIO1 7  // Fencer 1 Display Data
-#define CLK2 8  // Fencer 2 Display Clock
-#define DIO2 9  // Fencer 2 Display Data
-
-TM1637Display display1(CLK1, DIO1);
-TM1637Display display2(CLK2, DIO2);
-
+// Score tracking for status messages
 int fencer1Score = 0;
 int fencer2Score = 0;
 
@@ -85,35 +85,209 @@ void setup() {
   digitalWrite(LED2_PIN, LOW);
   digitalWrite(BUZZER_PIN, LOW);
 
+  // Initialize main timer display
   display.setBrightness(0x0f);
+  
+  // Initialize fencer score displays
   display1.setBrightness(0x0f);
   display2.setBrightness(0x0f);
-
-// Show initial score of 0
-  display1.showNumberDec(0);
-  display2.showNumberDec(0);
-  display1.showNumberDec(0, true);  // Show 0 on fencer 1 display
-  display2.showNumberDec(0, true);  // Show 0 on fencer 2 display
+  
+  // Show initial scores
+  updateScoreDisplays();
 }
 
-void loop() {
-// ===== UART Command Listener (Improved with CR/LF Support) =====
-static String esp32Message = "";
-
-while (Serial1.available()) {
-  char incomingByte = Serial1.read();
-
-  if (incomingByte == '\n' || incomingByte == '\r') {
-    if (esp32Message.length() > 0) {
-      Serial.print("Received message from ESP32: ");
-      Serial.println(esp32Message);
-      esp32Message = "";  // Clear buffer for next message
+// Process commands received from ESP32
+void processCommand(String message) {
+  message.trim();  // Remove any whitespace
+  
+  // Special case for SET_SCORE which is case-sensitive
+  if (message.startsWith("SET_SCORE:")) {
+    Serial.println("Detected SET_SCORE command");
+    // Handle score updates from the app (format: "SET_SCORE:1:2")
+    // where 1 is fencer1Score and 2 is fencer2Score
+    String scoreStr = message.substring(10);
+    int colonPos = scoreStr.indexOf(':');
+    
+    Serial.print("Score string: ");
+    Serial.println(scoreStr);
+    Serial.print("Colon position: ");
+    Serial.println(colonPos);
+    
+    if (colonPos > 0) {
+      String score1Str = scoreStr.substring(0, colonPos);
+      String score2Str = scoreStr.substring(colonPos + 1);
+      
+      Serial.print("Score1 string: ");
+      Serial.println(score1Str);
+      Serial.print("Score2 string: ");
+      Serial.println(score2Str);
+      
+      int score1 = score1Str.toInt();
+      int score2 = score2Str.toInt();
+      
+      Serial.print("Parsed scores: ");
+      Serial.print(score1);
+      Serial.print(":");
+      Serial.println(score2);
+      
+      // Validate score values (must be non-negative)
+      if (score1 >= 0 && score2 >= 0) {
+        // Update local scores
+        Serial.println("Updating scores...");
+        fencer1Score = score1;
+        fencer2Score = score2;
+        
+        // Update displays
+        Serial.println("Calling updateScoreDisplays()...");
+        updateScoreDisplays();
+        
+        Serial.print("Scores updated from app: ");
+        Serial.print(fencer1Score);
+        Serial.print(":");
+        Serial.println(fencer2Score);
+        
+        Serial1.print("ACK: <scores updated to ");
+        Serial1.print(fencer1Score);
+        Serial1.print(":");
+        Serial1.print(fencer2Score);
+        Serial1.println(">");
+      } else {
+        Serial.println("Invalid score values (must be non-negative)");
+        Serial1.println("ERROR: <invalid score values>");
+      }
+    } else {
+      Serial.println("Invalid score format (should be SET_SCORE:X:Y)");
+      Serial1.println("ERROR: <invalid score format>");
     }
-  } else {
-    esp32Message += incomingByte;  // Add to buffer
+    return;
+  }
+  
+  // Convert to lowercase for case-insensitive command comparison
+  String lowerMessage = message;
+  lowerMessage.toLowerCase();
+  
+  if (lowerMessage == "start") {
+    timerRunning = true;
+    passivityTimerRunning = true;  // Start passivity timer with main timer
+    Serial.println("Timer Started");
+    Serial1.println("ACK: <start timer>");
+    
+    // Send the current timer value when starting
+    long currentTimeMs = (long)remainingSeconds * 1000;
+    String timerStatus = "STATUS:TIMER:" + String(currentTimeMs) + ":RUNNING";
+    Serial1.println(timerStatus);
+    
+    // Send passivity timer status
+    long passivityTimeMs = (long)passivitySeconds * 1000;
+    String passivityStatus = "STATUS:PASSIVITY:" + String(passivityTimeMs) + ":RUNNING";
+    Serial1.println(passivityStatus);
+  } 
+  else if (lowerMessage == "stop") {
+    timerRunning = false;
+    passivityTimerRunning = false;  // Stop passivity timer with main timer
+    Serial.println("Timer Stopped");
+    Serial1.println("ACK: <stop timer>");
+    
+    // Send timer status
+    long currentTimeMs = (long)remainingSeconds * 1000;
+    String timerStatus = "STATUS:TIMER:" + String(currentTimeMs) + ":STOPPED";
+    Serial1.println(timerStatus);
+    
+    // Send passivity timer status
+    long passivityTimeMs = (long)passivitySeconds * 1000;
+    String passivityStatus = "STATUS:PASSIVITY:" + String(passivityTimeMs) + ":STOPPED";
+    Serial1.println(passivityStatus);
+  } 
+  else if (lowerMessage.startsWith("reset:")) {
+    timerRunning = false;             // Stop the timer on reset
+    
+    // Extract the time value after "reset:" (in milliseconds)
+    String timeStr = lowerMessage.substring(6);
+    long newTimeMs = timeStr.toInt();
+    
+    // Validate time (must be between 1000ms and 3600000ms / 1 sec to 60 minutes)
+    if (newTimeMs >= 1000 && newTimeMs <= 3600000) {
+      remainingSeconds = newTimeMs / 1000;  // Convert to seconds
+      int minutes = remainingSeconds / 60;
+      int seconds = remainingSeconds % 60;
+      Serial.print("Timer Reset to ");
+      Serial.print(minutes);
+      Serial.print(":");
+      if (seconds < 10) Serial.print("0");
+      Serial.print(seconds);
+      Serial.print(" (");
+      Serial.print(newTimeMs);
+      Serial.println("ms)");
+      Serial1.print("ACK: <reset timer to ");
+      Serial1.print(newTimeMs);
+      Serial1.println("ms>");
+    } else {
+      // Invalid time value
+      Serial.print("Invalid time value: ");
+      Serial.print(newTimeMs);
+      Serial.println("ms. Must be between 1000-3600000ms");
+      Serial1.println("ERROR: <reset timer> (invalid time)");
+    }
+    
+    updateDisplay();                  // Update the display
+  }
+  else if (lowerMessage == "status") {
+    // Send current state to app
+    Serial.println("Sending status...");
+    Serial.print("Current remainingSeconds: ");
+    Serial.println(remainingSeconds);
+    Serial.print("Timer running: ");
+    Serial.println(timerRunning ? "YES" : "NO");
+    
+    // Send timer status
+    long currentTimeMs = (long)remainingSeconds * 1000;
+    String timerStatus = "STATUS:TIMER:" + String(currentTimeMs) + ":" + (timerRunning ? "RUNNING" : "STOPPED");
+    Serial1.println(timerStatus);
+    Serial.println("Sent: " + timerStatus);
+    
+    // Send passivity timer status
+    long passivityTimeMs = (long)passivitySeconds * 1000;
+    String passivityStatus = "STATUS:PASSIVITY:" + String(passivityTimeMs) + ":" + (passivityTimerRunning ? "RUNNING" : "STOPPED");
+    Serial1.println(passivityStatus);
+    Serial.println("Sent: " + passivityStatus);
+    
+    // Send score status
+    String scoreStatus = "STATUS:SCORE:" + String(fencer1Score) + ":" + String(fencer2Score);
+    Serial1.println(scoreStatus);
+    Serial.println("Sent: " + scoreStatus);
+    
+    Serial1.println("ACK: <status>");
+  }
+  else {
+    // Optional: Print unrecognized commands
+    Serial.print("Unrecognized Command: ");
+    Serial.println(message);
   }
 }
 
+void loop() {
+  // ===== UART Command Listener (Improved with CR/LF Support) =====
+  static String esp32Message = "";
+  
+  // Process incoming Serial1 messages
+  while (Serial1.available()) {
+    char incomingByte = Serial1.read();
+  
+    if (incomingByte == '\n' || incomingByte == '\r') {
+      if (esp32Message.length() > 0) {
+        // Log the raw message
+        Serial.print("Received raw message from ESP32: ");
+        Serial.println(esp32Message);
+        
+        // Process the message based on its content
+        processCommand(esp32Message);
+        
+        esp32Message = "";  // Clear buffer for next message
+      }
+    } else {
+      esp32Message += incomingByte;  // Add to buffer
+    }
+  }
 
   // ===== Existing Timer Logic =====
   handleButton();
@@ -158,145 +332,7 @@ while (Serial1.available()) {
   }
 
   handleFencingLogic();
-  
-   // Example: Read incoming message from Serial1 (connected to ESP32)
-if (Serial1.available()) {
-    String incomingMessage = Serial1.readStringUntil('\n');
-    incomingMessage.trim();              // Remove whitespace/newlines
-    incomingMessage.toLowerCase();       // Convert to lowercase
-    incomingMessage.trim();  // Remove any whitespace or newline characters
-
-
-    if (incomingMessage == "start") {
-        timerRunning = true;
-        passivityTimerRunning = true;  // Start passivity timer with main timer
-        Serial.println("Timer Started");
-        Serial1.println("ACK: <start timer>");
-        
-        // Send the current timer value when starting
-        long currentTimeMs = (long)remainingSeconds * 1000;
-        String timerStatus = "STATUS:TIMER:" + String(currentTimeMs) + ":RUNNING";
-        Serial1.println(timerStatus);
-        
-        // Send passivity timer status
-        long passivityTimeMs = (long)passivitySeconds * 1000;
-        String passivityStatus = "STATUS:PASSIVITY:" + String(passivityTimeMs) + ":RUNNING";
-        Serial1.println(passivityStatus);
-    } 
-    else if (incomingMessage == "stop") {
-        timerRunning = false;
-        passivityTimerRunning = false;  // Stop passivity timer with main timer
-        Serial.println("Timer Stopped");
-        Serial1.println("ACK: <stop timer>");
-        
-        // Send timer status
-        long currentTimeMs = (long)remainingSeconds * 1000;
-        String timerStatus = "STATUS:TIMER:" + String(currentTimeMs) + ":STOPPED";
-        Serial1.println(timerStatus);
-        
-        // Send passivity timer status
-        long passivityTimeMs = (long)passivitySeconds * 1000;
-        String passivityStatus = "STATUS:PASSIVITY:" + String(passivityTimeMs) + ":STOPPED";
-        Serial1.println(passivityStatus);
-    } 
-    else if (incomingMessage.startsWith("reset:")) {
-        timerRunning = false;             // Stop the timer on reset
-        
-        // Extract the time value after "reset:" (in milliseconds)
-        String timeStr = incomingMessage.substring(6);
-        long newTimeMs = timeStr.toInt();
-        
-        // Validate time (must be between 1000ms and 3600000ms / 1 sec to 60 minutes)
-        if (newTimeMs >= 1000 && newTimeMs <= 3600000) {
-            remainingSeconds = newTimeMs / 1000;  // Convert to seconds
-            int minutes = remainingSeconds / 60;
-            int seconds = remainingSeconds % 60;
-            Serial.print("Timer Reset to ");
-            Serial.print(minutes);
-            Serial.print(":");
-            if (seconds < 10) Serial.print("0");
-            Serial.print(seconds);
-            Serial.print(" (");
-            Serial.print(newTimeMs);
-            Serial.println("ms)");
-            Serial1.print("ACK: <reset timer to ");
-            Serial1.print(newTimeMs);
-            Serial1.println("ms>");
-        } else {
-            // Invalid time value
-            Serial.print("Invalid time value: ");
-            Serial.print(newTimeMs);
-            Serial.println("ms. Must be between 1000-3600000ms");
-            Serial1.println("ERROR: <reset timer> (invalid time)");
-        }
-        
-        updateDisplay();                  // Update the display
-    } 
-      // Handle score commands
-    if (incomingMessage == "p1+") {
-      fencer1Score++;
-      display1.showNumberDec(fencer1Score, true);
-      Serial.println("Fencer 1 score increased");
-    } 
-    else if (incomingMessage == "p1-") {
-      if (fencer1Score > 0) fencer1Score--;
-      display1.showNumberDec(fencer1Score, true);
-      Serial.println("Fencer 1 score decreased");
-    } 
-    else if (incomingMessage == "p2+") {
-      fencer2Score++;
-      display2.showNumberDec(fencer2Score, true);
-      Serial.println("Fencer 2 score increased");
-    } 
-    else if (incomingMessage == "p2-") {
-      if (fencer2Score > 0) fencer2Score--;
-      display2.showNumberDec(fencer2Score, true);
-      Serial.println("Fencer 2 score decreased");
-    } 
-    else if (incomingMessage == "resetscore") {
-      fencer1Score = 0;
-      fencer2Score = 0;
-      display1.showNumberDec(0, true);
-      display2.showNumberDec(0, true);
-      Serial.println("Scores reset to 0");
-    }
-    
-    else if (incomingMessage == "status") {
-        // Send current state to app
-        Serial.println("Sending status...");
-        Serial.print("Current remainingSeconds: ");
-        Serial.println(remainingSeconds);
-        Serial.print("Timer running: ");
-        Serial.println(timerRunning ? "YES" : "NO");
-        
-        // Send timer status
-        long currentTimeMs = (long)remainingSeconds * 1000;
-        String timerStatus = "STATUS:TIMER:" + String(currentTimeMs) + ":" + (timerRunning ? "RUNNING" : "STOPPED");
-        Serial1.println(timerStatus);
-        Serial.println("Sent: " + timerStatus);
-        
-        // Send passivity timer status
-        long passivityTimeMs = (long)passivitySeconds * 1000;
-        String passivityStatus = "STATUS:PASSIVITY:" + String(passivityTimeMs) + ":" + (passivityTimerRunning ? "RUNNING" : "STOPPED");
-        Serial1.println(passivityStatus);
-        Serial.println("Sent: " + passivityStatus);
-        
-        // Send score status
-        String scoreStatus = "STATUS:SCORE:" + String(fencer1Score) + ":" + String(fencer2Score);
-        Serial1.println(scoreStatus);
-        Serial.println("Sent: " + scoreStatus);
-        
-        Serial1.println("ACK: <status>");
-    }
-    else {
-        // Optional: Print unrecognized commands
-        Serial.print("Unrecognized Command: ");
-        Serial.println(incomingMessage);
-    }
 }
-
-}
-
 
 // ==== Button, Display, and Scoring Functions ====
 
@@ -347,6 +383,18 @@ void updateDisplay() {
   int seconds = remainingSeconds % 60;
   int displayTime = minutes * 100 + seconds;
   display.showNumberDecEx(displayTime, 0b01000000, true);
+}
+
+void updateScoreDisplays() {
+  // Show scores on fencer displays
+  display1.showNumberDec(fencer1Score, false);
+  display2.showNumberDec(fencer2Score, false);
+  
+  // Print for debugging
+  Serial.print("Updated score displays: Fencer1=");
+  Serial.print(fencer1Score);
+  Serial.print(", Fencer2=");
+  Serial.println(fencer2Score);
 }
 
 void triggerEndBuzzer() {
@@ -444,6 +492,9 @@ void handleFencingLogic() {
         Serial1.println("SCORE:FENCER2");
         fencer2Score++;
       }
+      
+      // Update score displays whenever scores change
+      updateScoreDisplays();
     }
 
     if (fencer1Scores) digitalWrite(LED1_PIN, HIGH);
