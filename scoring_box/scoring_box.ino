@@ -51,7 +51,15 @@ bool fencer1NotificationSent = false;
 bool fencer2NotificationSent = false;
 bool doubleNotificationSent = false;
 
-// Score tracking for status messages
+// Example TM1637 Pin Definitions (Adjust as Needed)
+#define CLK1 6  // Fencer 1 Display Clock
+#define DIO1 7  // Fencer 1 Display Data
+#define CLK2 8  // Fencer 2 Display Clock
+#define DIO2 9  // Fencer 2 Display Data
+
+TM1637Display display1(CLK1, DIO1);
+TM1637Display display2(CLK2, DIO2);
+
 int fencer1Score = 0;
 int fencer2Score = 0;
 
@@ -78,6 +86,14 @@ void setup() {
   digitalWrite(BUZZER_PIN, LOW);
 
   display.setBrightness(0x0f);
+  display1.setBrightness(0x0f);
+  display2.setBrightness(0x0f);
+
+// Show initial score of 0
+  display1.showNumberDec(0);
+  display2.showNumberDec(0);
+  display1.showNumberDec(0, true);  // Show 0 on fencer 1 display
+  display2.showNumberDec(0, true);  // Show 0 on fencer 2 display
 }
 
 void loop() {
@@ -150,6 +166,7 @@ if (Serial1.available()) {
     incomingMessage.toLowerCase();       // Convert to lowercase
     incomingMessage.trim();  // Remove any whitespace or newline characters
 
+
     if (incomingMessage == "start") {
         timerRunning = true;
         passivityTimerRunning = true;  // Start passivity timer with main timer
@@ -215,6 +232,35 @@ if (Serial1.available()) {
         
         updateDisplay();                  // Update the display
     } 
+      // Handle score commands
+    if (incomingMessage == "p1+") {
+      fencer1Score++;
+      display1.showNumberDec(fencer1Score, true);
+      Serial.println("Fencer 1 score increased");
+    } 
+    else if (incomingMessage == "p1-") {
+      if (fencer1Score > 0) fencer1Score--;
+      display1.showNumberDec(fencer1Score, true);
+      Serial.println("Fencer 1 score decreased");
+    } 
+    else if (incomingMessage == "p2+") {
+      fencer2Score++;
+      display2.showNumberDec(fencer2Score, true);
+      Serial.println("Fencer 2 score increased");
+    } 
+    else if (incomingMessage == "p2-") {
+      if (fencer2Score > 0) fencer2Score--;
+      display2.showNumberDec(fencer2Score, true);
+      Serial.println("Fencer 2 score decreased");
+    } 
+    else if (incomingMessage == "resetscore") {
+      fencer1Score = 0;
+      fencer2Score = 0;
+      display1.showNumberDec(0, true);
+      display2.showNumberDec(0, true);
+      Serial.println("Scores reset to 0");
+    }
+    
     else if (incomingMessage == "status") {
         // Send current state to app
         Serial.println("Sending status...");
