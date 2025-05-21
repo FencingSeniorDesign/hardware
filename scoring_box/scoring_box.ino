@@ -2,29 +2,29 @@
 
 // ==== Fencer 1 Pin Definitions ======
 const int A1_PIN = 22;
-const int B1_PIN = 24;
-const int C1_PIN = 26;
+const int B1_PIN = 26;
+const int C1_PIN = 30;
 
 // ==== Fencer 2 Pin Definitions ====
-const int A2_PIN = 23;
-const int B2_PIN = 25;
-const int C2_PIN = 27;
+const int A2_PIN = 25;
+const int B2_PIN = 29;
+const int C2_PIN = 33;
 
 // ==== Output Devices ====
-const int LED1_PIN = 30;
-const int LED2_PIN = 32;
+const int LED1_PIN = 37;
+const int LED2_PIN = 38;
 const int BUZZER_PIN = 34;
 
 // ==== Timer Display Pins ====
-#define CLK 4
-#define DIO 5
+#define CLK 42
+#define DIO 41
 TM1637Display display(CLK, DIO);
 
 // ==== Fencer Score Display Pins ====
-#define CLK1 6  // Fencer 1 Display Clock
-#define DIO1 7  // Fencer 1 Display Data
-#define CLK2 8  // Fencer 2 Display Clock
-#define DIO2 9  // Fencer 2 Display Data
+#define CLK1 46  // Fencer 1 Display Clock
+#define DIO1 45  // Fencer 1 Display Data
+#define CLK2 50  // Fencer 2 Display Clock
+#define DIO2 49  // Fencer 2 Display Data
 TM1637Display display1(CLK1, DIO1);
 TM1637Display display2(CLK2, DIO2);
 
